@@ -46,9 +46,9 @@ bool DoDebug(const uint8_t type);
 
 // If below are defined, code for respective debug target is included into build
 //#define DEBUG_ENABLE_UART
-#define DEBUG_ENABLE_USB
+//#define DEBUG_ENABLE_USB
 
-#define DEBUG_BUFFER_SIZE 512
+//#define DEBUG_BUFFER_SIZE 512
 
 // Debugging utilities
 

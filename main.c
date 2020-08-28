@@ -351,6 +351,11 @@ void EVENT_USB_Device_ControlRequest(void)
 
 
 
+uint8_t previousJoystickReportData[150];
+int8_t  previousZRotation[150];
+uint8_t count;
+int firstPass = 0;
+
 /** Function to manage HID report generation and transmission to the host. */
 void HID_Task(void)
 	{
@@ -369,11 +374,64 @@ void HID_Task(void)
 		/* Create the next HID report to send to the host */
 		Joystick_CreateInputReport(INPUT_REPORTID_ALL, &JoystickReportData);
 
+		if( firstPass == 0) {
+		    for(int i = 149; i >= 0; i--){
+		    previousJoystickReportData[i] = JoystickReportData.Throttle;
+		    previousZRotation[i] = JoystickReportData.Rz;
+		    }
+		    count = -128;
+		    firstPass = 1;
+		}
+        long average = 0;
+        long averageRz = 0;
+        int high = 0;
+        int highZ = -128;
+        int low = 255;
+        int lowZ = 128;
+        for (int i = 149; i>=0; i--){
+            average += previousJoystickReportData[i];
+            averageRz += previousZRotation[i];
+            if(previousJoystickReportData[i] > high){
+                high = previousJoystickReportData[i];
+            }
+            if(previousZRotation[i] > highZ){
+                highZ = previousZRotation[i];
+            }
+            if(previousJoystickReportData[i] < low){
+                low = previousJoystickReportData[i];
+            }
+            if(previousZRotation[i] < lowZ){
+                lowZ = previousZRotation[i];
+            }
+        }
+        average = average / 150;
+        averageRz = averageRz / 150;
+
+        previousJoystickReportData[0] = JoystickReportData.Throttle;
+        previousZRotation[0] = JoystickReportData.Rz;
+
+        if(high - low >= 252) {
+            average = 0;
+        }
+
+        if(highZ - lowZ >= 62) {
+            averageRz = 96;
+        }
+
+        JoystickReportData.Throttle = average;
+        JoystickReportData.Rz = averageRz;
+
 		/* Write Joystick Report Data */
 		Endpoint_Write_Stream_LE(&JoystickReportData, sizeof(USB_JoystickReport_Data_t), NULL);
 
 		/* Finalize the stream transfer to send the last packet */
 		Endpoint_ClearIN();
+
+        for (int i = 149; i>0; i--){
+            previousJoystickReportData[i] = previousJoystickReportData[i-1];
+            previousZRotation[i] = previousZRotation[i-1];
+        }
+
 		}
 
 	// Receive FFB data
