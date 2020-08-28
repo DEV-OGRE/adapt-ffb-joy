@@ -368,7 +368,6 @@ void HID_Task(void)
 	if (Endpoint_IsINReady())
 		{
         long averageRz = 0;
-        long newHalfRzAverage = 0;
         long average = 0;
         long newHalfAverage = 0;
 
@@ -391,16 +390,9 @@ void HID_Task(void)
 
             if(i >= 75){
                 newHalfAverage += previousJoystickReportData[i];
-                newHalfRzAverage += previousZRotation[i];
-
                 if(previousJoystickReportData[i] >= 0 && previousJoystickReportData[i] <= 127) {
                     newHalfAverage += 256;
                 }
-
-                if(previousZRotation[i] >= -32 && previousZRotation[i] <= -1) {
-                    newHalfRzAverage += 64;
-                }
-
             }
 
             if(previousJoystickReportData[i] >= 0 && previousJoystickReportData[i] <= 127) {
@@ -414,10 +406,9 @@ void HID_Task(void)
 
 
         newHalfAverage = newHalfAverage / 75;
-        newHalfRzAverage = newHalfRzAverage / 75;
 
         average = ((average / 150) + newHalfAverage) / 2;
-        averageRz = ((averageRz / 150) + newHalfRzAverage) / 2;
+        averageRz = (averageRz / 150);
 
         if((JoystickReportData.Throttle > previousJoystickReportData[0] && previousJoystickReportData[1] > previousJoystickReportData[0]) ||
             (JoystickReportData.Throttle < previousJoystickReportData[0] && previousJoystickReportData[1] < previousJoystickReportData[0])) {
