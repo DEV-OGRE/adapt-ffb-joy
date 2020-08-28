@@ -353,9 +353,7 @@ void EVENT_USB_Device_ControlRequest(void)
 
 uint8_t previousJoystickReportData[150];
 int8_t  previousZRotation[150];
-uint8_t count;
 int firstPass = 0;
-
 /** Function to manage HID report generation and transmission to the host. */
 void HID_Task(void)
 	{
@@ -369,53 +367,72 @@ void HID_Task(void)
 	/* Check to see if the host is ready for another packet */
 	if (Endpoint_IsINReady())
 		{
+        long averageRz = 0;
+        long newHalfRzAverage = 0;
+        long average = 0;
+        long newHalfAverage = 0;
+
 		USB_JoystickReport_Data_t JoystickReportData;
 
 		/* Create the next HID report to send to the host */
 		Joystick_CreateInputReport(INPUT_REPORTID_ALL, &JoystickReportData);
 
-		if( firstPass == 0) {
+		if(firstPass == 0) {
 		    for(int i = 149; i >= 0; i--){
 		    previousJoystickReportData[i] = JoystickReportData.Throttle;
 		    previousZRotation[i] = JoystickReportData.Rz;
 		    }
-		    count = -128;
 		    firstPass = 1;
 		}
-        long average = 0;
-        long averageRz = 0;
-        int high = 0;
-        int highZ = -128;
-        int low = 255;
-        int lowZ = 128;
+
         for (int i = 149; i>=0; i--){
             average += previousJoystickReportData[i];
             averageRz += previousZRotation[i];
-            if(previousJoystickReportData[i] > high){
-                high = previousJoystickReportData[i];
+
+            if(i >= 75){
+                newHalfAverage += previousJoystickReportData[i];
+                newHalfRzAverage += previousZRotation[i];
+
+                if(previousJoystickReportData[i] >= 0 && previousJoystickReportData[i] <= 127) {
+                    newHalfAverage += 256;
+                }
+
+                if(previousZRotation[i] >= -32 && previousZRotation[i] <= -1) {
+                    newHalfRzAverage += 64;
+                }
+
             }
-            if(previousZRotation[i] > highZ){
-                highZ = previousZRotation[i];
+
+            if(previousJoystickReportData[i] >= 0 && previousJoystickReportData[i] <= 127) {
+                average += 256;
             }
-            if(previousJoystickReportData[i] < low){
-                low = previousJoystickReportData[i];
-            }
-            if(previousZRotation[i] < lowZ){
-                lowZ = previousZRotation[i];
+
+            if(previousZRotation[i] >= -32 && previousZRotation[i] <= -1) {
+                averageRz += 64;
             }
         }
-        average = average / 150;
-        averageRz = averageRz / 150;
 
-        previousJoystickReportData[0] = JoystickReportData.Throttle;
-        previousZRotation[0] = JoystickReportData.Rz;
 
-        if(high - low >= 252) {
-            average = 0;
+        newHalfAverage = newHalfAverage / 75;
+        newHalfRzAverage = newHalfRzAverage / 75;
+
+        average = ((average / 150) + newHalfAverage) / 2;
+        averageRz = ((averageRz / 150) + newHalfRzAverage) / 2;
+
+        if((JoystickReportData.Throttle > previousJoystickReportData[0] && previousJoystickReportData[1] > previousJoystickReportData[0]) ||
+            (JoystickReportData.Throttle < previousJoystickReportData[0] && previousJoystickReportData[1] < previousJoystickReportData[0])) {
+            //potential jitter, don't put new frame in mem
+        } else {
+            previousJoystickReportData[0] = JoystickReportData.Throttle;
         }
 
-        if(highZ - lowZ >= 62) {
-            averageRz = 96;
+
+
+        if((JoystickReportData.Rz > previousZRotation[0] && previousZRotation[1] > previousZRotation[0]) ||
+            (JoystickReportData.Rz < previousZRotation[0] && previousZRotation[1] < previousZRotation[0])) {
+            //potential jitter, don't put new frame in mem
+        } else {
+            previousZRotation[0] = JoystickReportData.Rz;
         }
 
         JoystickReportData.Throttle = average;
