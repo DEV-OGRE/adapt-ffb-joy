@@ -353,6 +353,8 @@ void EVENT_USB_Device_ControlRequest(void)
 
 uint8_t previousJoystickReportData[150];
 int8_t  previousZRotation[150];
+int16_t previousX[50]; //Made 50 frames instead of 150 to minimize latency
+int16_t previousY[50]; //while still giving some jitter reduction
 int firstPass = 0;
 /** Function to manage HID report generation and transmission to the host. */
 void HID_Task(void)
@@ -367,36 +369,46 @@ void HID_Task(void)
 	/* Check to see if the host is ready for another packet */
 	if (Endpoint_IsINReady())
 		{
-        long averageRz = 0;
-        long average = 0;
-        long newHalfAverage = 0;
 
 		USB_JoystickReport_Data_t JoystickReportData;
 
 		/* Create the next HID report to send to the host */
 		Joystick_CreateInputReport(INPUT_REPORTID_ALL, &JoystickReportData);
 
+		long averageRz = JoystickReportData.Rz;
+        long averageThrottle = JoystickReportData.Throttle;
+        long averageX = JoystickReportData.X;
+        long averageY = JoystickReportData.Y;
+        long newHalfAverageThrottle = JoystickReportData.Throttle;
+        //Throttle's 2nd half is weighted double to help with velocity,
+        //since throttle is less affected by jitter as typically it's
+        //pushed to a position and left
+
 		if(firstPass == 0) {
 		    for(int i = 149; i >= 0; i--){
-		    previousJoystickReportData[i] = JoystickReportData.Throttle;
-		    previousZRotation[i] = JoystickReportData.Rz;
+		        previousJoystickReportData[i] = JoystickReportData.Throttle;
+		        previousZRotation[i] = JoystickReportData.Rz;
+		    }
+		    for(int i = 49; i >= 0; i--){
+		        previousX[i] = JoystickReportData.X;
+		        previousY[i] = JoystickReportData.Y;
 		    }
 		    firstPass = 1;
 		}
 
         for (int i = 149; i>=0; i--){
-            average += previousJoystickReportData[i];
+            averageThrottle += previousJoystickReportData[i];
             averageRz += previousZRotation[i];
 
             if(i >= 75){
-                newHalfAverage += previousJoystickReportData[i];
+                newHalfAverageThrottle += previousJoystickReportData[i];
                 if(previousJoystickReportData[i] >= 0 && previousJoystickReportData[i] <= 127) {
-                    newHalfAverage += 256;
+                    newHalfAverageThrottle += 256;
                 }
             }
 
             if(previousJoystickReportData[i] >= 0 && previousJoystickReportData[i] <= 127) {
-                average += 256;
+                averageThrottle += 256;
             }
 
             if(previousZRotation[i] >= -32 && previousZRotation[i] <= -1) {
@@ -404,11 +416,21 @@ void HID_Task(void)
             }
         }
 
+        for(int i = 49; i>=0; i--){
+            averageX += previousX[i];
+            averageY += previousY[i];
+        }
 
-        newHalfAverage = newHalfAverage / 75;
+        averageX = averageX / 51;
+        averageY = averageY / 51;
 
-        average = ((average / 150) + newHalfAverage) / 2;
-        averageRz = (averageRz / 150);
+        newHalfAverageThrottle = newHalfAverageThrottle / 76;
+
+        averageThrottle = ((averageThrottle / 151) + newHalfAverageThrottle) / 2;
+        averageRz = (averageRz / 151);
+
+        previousX[0] = JoystickReportData.X;
+        previousY[0] = JoystickReportData.Y;
 
         if((JoystickReportData.Throttle > previousJoystickReportData[0] && previousJoystickReportData[1] > previousJoystickReportData[0]) ||
             (JoystickReportData.Throttle < previousJoystickReportData[0] && previousJoystickReportData[1] < previousJoystickReportData[0])) {
@@ -417,8 +439,6 @@ void HID_Task(void)
             previousJoystickReportData[0] = JoystickReportData.Throttle;
         }
 
-
-
         if((JoystickReportData.Rz > previousZRotation[0] && previousZRotation[1] > previousZRotation[0]) ||
             (JoystickReportData.Rz < previousZRotation[0] && previousZRotation[1] < previousZRotation[0])) {
             //potential jitter, don't put new frame in mem
@@ -426,8 +446,10 @@ void HID_Task(void)
             previousZRotation[0] = JoystickReportData.Rz;
         }
 
-        JoystickReportData.Throttle = average;
+        JoystickReportData.Throttle = averageThrottle;
         JoystickReportData.Rz = averageRz;
+        JoystickReportData.X = averageX;
+        JoystickReportData.Y = averageY;
 
 		/* Write Joystick Report Data */
 		Endpoint_Write_Stream_LE(&JoystickReportData, sizeof(USB_JoystickReport_Data_t), NULL);
@@ -438,6 +460,11 @@ void HID_Task(void)
         for (int i = 149; i>0; i--){
             previousJoystickReportData[i] = previousJoystickReportData[i-1];
             previousZRotation[i] = previousZRotation[i-1];
+        }
+
+        for (int i = 49; i>0; i--){
+            previousX[i] = previousX[i-1];
+            previousY[i] = previousY[i-1];
         }
 
 		}
